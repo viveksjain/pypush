@@ -25,6 +25,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		self.path = flags.dest
 		self.quiet = flags.quiet
 		self.verbose = flags.verbose
+		self.cwd = os.getcwd()
 		if self.path[-1] != '/': # Ensure path ends in a slash, i.e. it is a directory
 			self.path += '/'
 
@@ -40,7 +41,6 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		print 'Generating list of files'
 		args = ['git', 'ls-files', '-c', '-o', '--exclude-standard'] # Show all non-excluded files in the current directory
 		output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
-		cwd = os.getcwd()
 		tf = tempfile.NamedTemporaryFile(delete=False)
 		for line in string.split(output, '\n'):
 			if line != '':
@@ -86,7 +86,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 	def relative_path(self, filename):
 		"""Convert filename to a path relative to the current directory."""
-		return filename.replace(os.getcwd(), '', 1)[1:]
+		return filename.replace(self.cwd, '', 1)[1:]
 
 	def dispatch(self, event):
 		"""Dispatch events to the appropriate methods."""
