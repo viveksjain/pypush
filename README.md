@@ -21,10 +21,9 @@ Requirements
 ------------
 Requires a Unix system - Mac or Linux. May work on Windows with the right tools
 installed. If you are interested in getting it to work on Windows, [open a new
-issue](https://github.com/viveksjain/pypush/issues/new). You must have
-passwordless SSH access to the remote machine, and it must have rsync installed.
-The local directory must be a git repository (although it doesn't need to have
-any commits or staged files).
+issue](https://github.com/viveksjain/pypush/issues/new). The remote machine must
+have rsync installed. The local directory must be a git repository (although it
+doesn't need to have any commits or staged files).
 
 Installation
 ------------

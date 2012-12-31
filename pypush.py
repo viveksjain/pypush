@@ -12,6 +12,7 @@ import string
 import tempfile
 import argparse
 import re
+import atexit
 
 class PypushHandler(watchdog.events.FileSystemEventHandler):
 	"""Push all changes in the current directory to a remote server."""
@@ -32,8 +33,14 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		args = ['ssh', '-t', '-t', # Force tty allocation - this prevents certain error messages
 			'-M', '-S', '~/.ssh/socket-%r@%h:%p', # Create a master TCP connection that we can use later every time a file changes
+			'-fN', # Go to the background when the connection is established - so after this command returns, we can be sure that the master connection has been created
 			self.user]
-		subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+		if subprocess.call(args):
+			print 'Error with ssh, aborting'
+			sys.exit(1)
+
+		atexit.register(subprocess.call,
+			['ssh', '-O', 'exit', '-S', '~/.ssh/socket-%r@%h:%p', self.user], stderr=subprocess.PIPE) # Close the master connection before exiting
 
 		if flags.skip_init:
 			print 'Waiting for file changes\n'
