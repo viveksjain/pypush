@@ -141,6 +141,7 @@ def main():
 		help='verbose mode - run rsync in verbose mode')
 	parser.add_argument('-s', '--skip-init', action='store_const', default=False, const=True,
 		help='skip the initial one-way sync performed on startup')
+	parser.add_argument('--version', action='version', version='%(prog)s 1.0')
 	parser.add_argument('user', metavar='[user@]hostname', help='the remote machine (and optional user name) to login to')
 	parser.add_argument('dest', help='the path to the remote directory to push changes to')
 	args = parser.parse_args()
