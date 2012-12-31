@@ -27,6 +27,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		self.path = flags.dest
 		self.quiet = flags.quiet
 		self.verbose = flags.verbose
+		self.show_ignored = flags.show_ignored
 		self.cwd = os.getcwd()
 		if self.path[-1] != '/': # Ensure path ends in a slash, i.e. it is a directory
 			self.path += '/'
@@ -121,6 +122,8 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			else: # Created or modified
 				if not self.should_ignore(event.src_path):
 					self.on_modified(path, path + ' ' + event.event_type)
+				elif self.show_ignored:
+					self.print_quiet(path + ' ' + event.event_type + ' (ignored)')
 
 	def on_modified(self, path, output=''):
 		"""Call rsync on the given relative path."""
@@ -160,6 +163,8 @@ def main():
 		help='verbose mode - run rsync in verbose mode')
 	parser.add_argument('-s', '--skip-init', action='store_const', default=False, const=True,
 		help='skip the initial one-way sync performed on startup')
+	parser.add_argument('-i', '--show-ignored', action='store_const', default=False, const=True,
+		help='print output even when ignored files are created or modified (this flag is overridden by quiet mode)')
 	parser.add_argument('--version', action='version', version='%(prog)s 1.0')
 	parser.add_argument('user', metavar='[user@]hostname', help='the remote machine (and optional user name) to login to')
 	parser.add_argument('dest', help='the path to the remote directory to push changes to')
