@@ -44,8 +44,19 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		if flags.skip_init:
 			print 'Waiting for file changes\n'
-			return
+		else:
+			self.sync()
 
+	def escape(self, path):
+		"""Escape all special characters in path, except the tilde (~)."""
+		return re.sub(r'([\|&;<>\(\)\$`\\"\' \*\?\[#])', # List of special characters from http://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html
+			r'\\\1', path)
+
+	def sync(self):
+		"""Perform a one-way sync to the remote directory.
+
+		Exclude any files ignored by git.
+		"""
 		print 'Generating list of files'
 		args = ['git', 'ls-files', '-c', '-o', '--exclude-standard'] # Show all non-excluded files in the current directory
 		output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
@@ -57,7 +68,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		print 'Performing initial one-way sync'
 		args = ['rsync', '-az', # Usual flags - archive, compress
-			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p', # Connect to the master TCP connection from earlier
+			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p', # Connect to the master connection from earlier
 			'--include-from=' + tf.name, # Include the list of files we got from git
 			'--exclude=*', # Exclude everything else
 			'--delete-excluded', # Delete excluded files
@@ -70,11 +81,6 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			sys.exit(1)
 		os.remove(tf.name)
 		print 'Startup complete, waiting for file changes\n'
-
-	def escape(self, path):
-		"""Escape all special characters in path, except the tilde (~)."""
-		return re.sub(r'([\|&;<>\(\)\$`\\"\' \*\?\[#])', # List of special characters from http://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html
-			r'\\\1', path)
 
 	def print_quiet(self, message):
 		"""Only print the given message if not in quiet mode.
@@ -112,10 +118,9 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 				# We can't do 'git ls-files' on a deleted file, so just try to
 				# delete it - if it doesn't exist on the remote, nothing will happen
 				self.on_deleted(path, path + ' deleted')
-			else: # Created or deleted
-				if self.should_ignore(event.src_path):
-					return
-				self.on_modified(path, path + ' ' + event.event_type)
+			else: # Created or modified
+				if not self.should_ignore(event.src_path):
+					self.on_modified(path, path + ' ' + event.event_type)
 
 	def on_modified(self, path, output=''):
 		"""Call rsync on the given relative path."""
