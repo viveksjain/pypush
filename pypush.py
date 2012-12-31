@@ -149,7 +149,8 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			self.print_quiet(output + '...pushed')
 
 def main():
-	parser = argparse.ArgumentParser(description='Continuously push changes in the current directory to a remote server.',
+	parser = argparse.ArgumentParser(description="""Continuously push changes in the current directory to a remote server.
+			Files that are ignored by git will not be pushed (therefore the current directory must be a git repo).""",
 		epilog="""WARNING: pypush only performs a one-way sync. If you make
 			changes directly on the remote machine, they may be overwritten at
 			any time by changes made locally.""")
