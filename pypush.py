@@ -11,6 +11,7 @@ import subprocess
 import string
 import tempfile
 import argparse
+import re
 
 class PypushHandler(watchdog.events.FileSystemEventHandler):
 	"""Push all changes in the current directory to a remote server."""
@@ -54,7 +55,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			'--exclude=*', # Exclude everything else
 			'--delete-excluded', # Delete excluded files
 			'./', # Sync current directory
-			self.user + ':' + self.path]
+			self.user + ':' + self.escape(self.path)]
 		if self.verbose:
 			args.append('-v')
 		if subprocess.call(args):
@@ -62,6 +63,11 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			sys.exit(1)
 		os.remove(tf.name)
 		print 'Startup complete, waiting for file changes\n'
+
+	def escape(self, path):
+		"""Escape all special characters in path, except the tilde (~)."""
+		return re.sub(r'([\|&;<>\(\)\$`\\"\' \*\?\[#])', # List of special characters from http://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html
+			r'\\\1', path)
 
 	def print_quiet(self, message):
 		"""Only print the given message if not in quiet mode.
@@ -108,7 +114,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		"""Call rsync on the given relative path."""
 		if output:
 			self.print_quiet(output + '\r')
-		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p', path, self.user + ':' + self.path + path]
+		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p', path, self.user + ':' + self.escape(self.path + path)]
 		if self.verbose:
 			args.append('-v')
 		subprocess.call(args)
@@ -125,7 +131,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 	def on_deleted(self, path, output=''):
 		if output:
 			self.print_quiet(output + '\r')
-		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', self.user, 'rm -f ' + self.path + path]
+		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', self.user, 'rm -f ' + self.escape(self.path + path)]
 		subprocess.call(args)
 		if output:
 			self.print_quiet(output + '...pushed')
