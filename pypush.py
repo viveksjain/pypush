@@ -138,9 +138,15 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 	def on_moved(self, src, dest, output):
 		self.print_quiet(output + '\r')
-		if not self.should_ignore(dest):
+		if self.should_ignore(dest):
+			self.on_deleted(src)
+		else:
+			# Try to move src to dest on the remote with ssh and mv. Then call
+			# rsync on it, in case either src was changed on the remote, or it
+			# didn't exist.
+			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', self.user, 'mv ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
+			subprocess.call(args, stderr=subprocess.PIPE)
 			self.on_modified(dest)
-		self.on_deleted(src)
 		self.print_quiet(output + '...pushed')
 
 	def on_deleted(self, path, output=''):
