@@ -62,6 +62,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		args = ['git', 'ls-files', '-c', '-o', '--exclude-standard'] # Show all non-excluded files in the current directory
 		output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
 		tf = tempfile.NamedTemporaryFile(delete=False)
+		tf.write('*/\n') # Include all directories - see http://masstransmit.com/garage_blog/rsync-quirks/
 		for line in string.split(output, '\n'):
 			if line != '':
 				tf.write('/' + line + '\n')
