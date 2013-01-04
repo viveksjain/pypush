@@ -23,11 +23,16 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			print "Hint: run 'git init'"
 			sys.exit(1)
 
+		if flags.skip_init and flags.exit_after:
+			print 'Error: cannot use flags -s and -e together.'
+			sys.exit(1)
+
 		self.user = flags.user
 		self.path = flags.dest
 		self.quiet = flags.quiet
 		self.verbose = flags.verbose
 		self.show_ignored = flags.show_ignored
+		self.exit_after = flags.exit_after
 		self.cwd = os.getcwd()
 		if self.path[-1] != '/': # Ensure path ends in a slash, i.e. it is a directory
 			self.path += '/'
@@ -82,7 +87,11 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			print 'Error with rsync, aborting'
 			sys.exit(1)
 		os.remove(tf.name)
-		print 'Startup complete, waiting for file changes\n'
+		if self.exit_after:
+			print 'Done'
+			sys.exit(0)
+		else:
+			print 'Startup complete, waiting for file changes\n'
 
 	def print_quiet(self, message):
 		"""Only print the given message if not in quiet mode.
@@ -160,7 +169,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 def main():
 	parser = argparse.ArgumentParser(description="""Continuously push changes in the current directory to a remote server.
-			Files that are ignored by git will not be pushed (therefore the current directory must be a git repo).""",
+			Files that are ignored by git will not be pushed (therefore the current directory must be inside a git repo).""",
 		epilog="""WARNING: pypush only performs a one-way sync. If you make
 			changes directly on the remote machine, they may be overwritten at
 			any time by changes made locally.""")
@@ -172,8 +181,14 @@ def main():
 		help='skip the initial one-way sync performed on startup')
 	parser.add_argument('-i', '--show-ignored', action='store_const', default=False, const=True,
 		help='print output even when ignored files are created or modified (this flag is overridden by quiet mode)')
+	parser.add_argument('-e', '--exit-after', action='store_const', default=False, const=True,
+		help='exit after the initial sync, i.e. do not monitor the directory for changes')
+	
 	parser.add_argument('--version', action='version', version='%(prog)s 1.1')
-	parser.add_argument('user', metavar='[user@]hostname', help='the remote machine (and optional user name) to login to')
+	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')
+	# The user argument is passed on to rsync and ssh, so actually the 'user@'
+	# part is optional, but using metavar='[user@]hostname' causes an error
+	# because of a bug in argparse - see http://bugs.python.org/issue11874
 	parser.add_argument('dest', help='the path to the remote directory to push changes to')
 	args = parser.parse_args()
 

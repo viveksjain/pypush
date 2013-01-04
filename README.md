@@ -40,14 +40,14 @@ Or you can use `easy_install`:
 Usage
 -----
 ```
-usage: pypush.py [-h] [-q] [-v] [-s] [-i] [--version] [user@]hostname dest
+usage: pypush.py [-h] [-q] [-v] [-s] [-i] [-e] [--version] user@hostname dest
 
 Continuously push changes in the current directory to a remote server. Files
 that are ignored by git will not be pushed (therefore the current directory
-must be a git repo).
+must be inside a git repo).
 
 positional arguments:
-  [user@]hostname     the remote machine (and optional user name) to login to
+  user@hostname       the remote machine (and optional user name) to login to
   dest                the path to the remote directory to push changes to
 
 optional arguments:
@@ -57,10 +57,13 @@ optional arguments:
   -s, --skip-init     skip the initial one-way sync performed on startup
   -i, --show-ignored  print output even when ignored files are created or
                       modified (this flag is overridden by quiet mode)
+  -e, --exit-after    exit after the initial sync, i.e. do not monitor the
+                      directory for changes
   --version           show program's version number and exit
 
 WARNING: pypush only performs a one-way sync. If you make changes directly on
-the remote machine, they may be overwritten at any time by changes made locally.
+the remote machine, they may be overwritten at any time by changes made
+locally.
 ```
 
 Example:
