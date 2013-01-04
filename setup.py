@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
 	name = 'pypush',
-	version = '1.1',
+	version = '1.2',
 	description = 'Continuously push local changes to a remote server',
 	author = 'Vivek Jain',
 	author_email = 'pypush@vivekja.in',

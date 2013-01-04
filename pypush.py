@@ -184,7 +184,7 @@ def main():
 	parser.add_argument('-e', '--exit-after', action='store_const', default=False, const=True,
 		help='exit after the initial sync, i.e. do not monitor the directory for changes')
 	
-	parser.add_argument('--version', action='version', version='%(prog)s 1.1')
+	parser.add_argument('--version', action='version', version='%(prog)s 1.2')
 	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')
 	# The user argument is passed on to rsync and ssh, so actually the 'user@'
 	# part is optional, but using metavar='[user@]hostname' causes an error
