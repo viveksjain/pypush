@@ -16,13 +16,13 @@ import atexit
 
 class PypushHandler(watchdog.events.FileSystemEventHandler):
 	"""Push all changes in the current directory to a remote server."""
-
 	def __init__(self, flags):
+		self.disable_git = flags.disable_git
 		# Check if current directory is a git repo
-		if subprocess.call(['git', 'rev-parse']): # If this or any parent directory isn't a git repo, this command returns non-zero and prints an error message
-			print "Hint: run 'git init'"
-			sys.exit(1)
-
+		if not flags.disable_git:
+			if subprocess.Popen(['git', 'rev-parse'], stderr=subprocess.PIPE).communicate()[1]: # If this or any parent directory isn't a git repo, this command returns non-zero and prints an error message
+				print "This isn't a git repo, no files will be excluded"
+				self.disable_git = True
 		if flags.skip_init and flags.exit_after:
 			print 'Error: cannot use flags -s and -e together.'
 			sys.exit(1)
@@ -63,30 +63,35 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		Exclude any files ignored by git.
 		"""
-		print 'Generating list of files'
-		args = ['git', 'ls-files', '-c', '-o', '--exclude-standard'] # Show all non-excluded files in the current directory
-		output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
-		tf = tempfile.NamedTemporaryFile(delete=False)
-		tf.write('*/\n') # Include all directories - see http://masstransmit.com/garage_blog/rsync-quirks/
-		for line in string.split(output, '\n'):
-			if line != '':
-				tf.write('/' + line + '\n')
-		tf.close()
+		if not self.disable_git:
+			print 'Generating list of files'
+			args = ['git', 'ls-files', '-c', '-o', '--exclude-standard'] # Show all non-excluded files in the current directory
+			output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
+
+			tf = tempfile.NamedTemporaryFile(delete=False)
+			tf.write('*/\n') # Include all directories - see http://masstransmit.com/garage_blog/rsync-quirks/
+		
+			for line in string.split(output, '\n'):
+				if line != '':
+					tf.write('/' + line + '\n')
+			tf.close()
 
 		print 'Performing initial one-way sync'
 		args = ['rsync', '-az', # Usual flags - archive, compress
 			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p', # Connect to the master connection from earlier
-			'--include-from=' + tf.name, # Include the list of files we got from git
-			'--exclude=*', # Exclude everything else
-			'--delete-excluded', # Delete excluded files
 			'./', # Sync current directory
 			self.user + ':' + self.escape(self.path)]
+
+		if not self.disable_git:
+			args += ['--include-from=' + tf.name, '--exclude=*', '--delete-excluded']
+
 		if self.verbose:
 			args.append('-v')
 		if subprocess.call(args):
 			print 'Error with rsync, aborting'
 			sys.exit(1)
-		os.remove(tf.name)
+		if not self.disable_git:
+			os.remove(tf.name)
 		if self.exit_after:
 			print 'Done'
 			sys.exit(0)
@@ -109,6 +114,9 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 	def should_ignore(self, filename):
 		"""Return whether changes to filename should be ignored."""
+
+		if self.disable_git:
+			return False
 		args = ['git', 'ls-files', filename, '-c', '-o', '--exclude-standard']
 		if subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]: # If git outputs something, then that file isn't ignored
 			return False
@@ -183,6 +191,8 @@ def main():
 		help='print output even when ignored files are created or modified (this flag is overridden by quiet mode)')
 	parser.add_argument('-e', '--exit-after', action='store_const', default=False, const=True,
 		help='exit after the initial sync, i.e. do not monitor the directory for changes')
+	parser.add_argument('-d', '--disable-git', action='store_const', default=False, const=True,
+		help='do not exclude any files ignored by git')
 	
 	parser.add_argument('--version', action='version', version='%(prog)s 1.2')
 	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')

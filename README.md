@@ -40,7 +40,7 @@ Or you can use `easy_install`:
 Usage
 -----
 ```
-usage: pypush.py [-h] [-q] [-v] [-s] [-i] [-e] [--version] user@hostname dest
+usage: pypush.py [-h] [-q] [-v] [-s] [-i] [-e] [-d][--version] user@hostname dest
 
 Continuously push changes in the current directory to a remote server. Files
 that are ignored by git will not be pushed (therefore the current directory
@@ -59,6 +59,7 @@ optional arguments:
                       modified (this flag is overridden by quiet mode)
   -e, --exit-after    exit after the initial sync, i.e. do not monitor the
                       directory for changes
+  -d, --disable-git   do not exclude any files ignored by git
   --version           show program's version number and exit
 
 WARNING: pypush only performs a one-way sync. If you make changes directly on
