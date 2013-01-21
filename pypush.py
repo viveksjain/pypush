@@ -28,6 +28,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			sys.exit(1)
 
 		self.user = flags.user
+		self.port = flags.port
 		self.path = flags.dest
 		self.quiet = flags.quiet
 		self.verbose = flags.verbose
@@ -40,13 +41,14 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		args = ['ssh', '-t', '-t', # Force tty allocation - this prevents certain error messages
 			'-M', '-S', '~/.ssh/socket-%r@%h:%p', # Create a master TCP connection that we can use later every time a file changes
 			'-fN', # Go to the background when the connection is established - so after this command returns, we can be sure that the master connection has been created
-			self.user]
+			'-p', self.port,
+            self.user]
 		if subprocess.call(args):
 			print 'Error with ssh, aborting'
 			sys.exit(1)
 
 		atexit.register(subprocess.call,
-			['ssh', '-O', 'exit', '-S', '~/.ssh/socket-%r@%h:%p', self.user], stderr=subprocess.PIPE) # Close the master connection before exiting
+			['ssh', '-O', 'exit', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user], stderr=subprocess.PIPE) # Close the master connection before exiting
 
 		if flags.skip_init:
 			print 'Waiting for file changes\n'
@@ -78,7 +80,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		print 'Performing initial one-way sync'
 		args = ['rsync', '-az', # Usual flags - archive, compress
-			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p', # Connect to the master connection from earlier
+			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + str(self.port), # Connect to the master connection from earlier
 			'./', # Sync current directory
 			self.user + ':' + self.escape(self.path)]
 
@@ -147,7 +149,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		"""Call rsync on the given relative path."""
 		if output:
 			self.print_quiet(output + '\r')
-		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p', path, self.user + ':' + self.escape(self.path + path)]
+		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + str(self.port), path, self.user + ':' + self.escape(self.path + path)]
 		if self.verbose:
 			args.append('-v')
 		subprocess.call(args)
@@ -162,7 +164,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			# Try to move src to dest on the remote with ssh and mv. Then call
 			# rsync on it, in case either src was changed on the remote, or it
 			# didn't exist.
-			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', self.user, 'mv ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
+			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mv ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
 			subprocess.call(args, stderr=subprocess.PIPE)
 			self.on_modified(dest)
 		self.print_quiet(output + '...pushed')
@@ -170,7 +172,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 	def on_deleted(self, path, output=''):
 		if output:
 			self.print_quiet(output + '\r')
-		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', self.user, 'rm -f ' + self.escape(self.path + path)]
+		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'rm -f ' + self.escape(self.path + path)]
 		subprocess.call(args)
 		if output:
 			self.print_quiet(output + '...pushed')
@@ -193,7 +195,8 @@ def main():
 		help='exit after the initial sync, i.e. do not monitor the directory for changes')
 	parser.add_argument('-d', '--disable-git', action='store_const', default=False, const=True,
 		help='do not exclude any files ignored by git')
-	
+	parser.add_argument('-p', '--port', type='int', default='22', help='the port used for the ssh-connection')
+
 	parser.add_argument('--version', action='version', version='%(prog)s 1.2')
 	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')
 	# The user argument is passed on to rsync and ssh, so actually the 'user@'
