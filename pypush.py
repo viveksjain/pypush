@@ -28,7 +28,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			sys.exit(1)
 
 		self.user = flags.user
-		self.port = flags.port
+		self.port = str(flags.port) # Store as string to allow passing it as a flag
 		self.path = flags.dest
 		self.quiet = flags.quiet
 		self.verbose = flags.verbose
@@ -80,7 +80,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		print 'Performing initial one-way sync'
 		args = ['rsync', '-az', # Usual flags - archive, compress
-			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + str(self.port), # Connect to the master connection from earlier
+			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + self.port, # Connect to the master connection from earlier
 			'./', # Sync current directory
 			self.user + ':' + self.escape(self.path)]
 
@@ -149,7 +149,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		"""Call rsync on the given relative path."""
 		if output:
 			self.print_quiet(output + '\r')
-		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + str(self.port), path, self.user + ':' + self.escape(self.path + path)]
+		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + self.port, path, self.user + ':' + self.escape(self.path + path)]
 		if self.verbose:
 			args.append('-v')
 		subprocess.call(args)
@@ -195,7 +195,7 @@ def main():
 		help='exit after the initial sync, i.e. do not monitor the directory for changes')
 	parser.add_argument('-d', '--disable-git', action='store_const', default=False, const=True,
 		help='do not exclude any files ignored by git')
-	parser.add_argument('-p', '--port', type='int', default='22', help='the port used for the ssh-connection')
+	parser.add_argument('-p', '--port', type=int, default=22, help='the port used for the ssh-connection')
 
 	parser.add_argument('--version', action='version', version='%(prog)s 1.2')
 	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')
