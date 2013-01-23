@@ -23,18 +23,19 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			if subprocess.Popen(['git', 'rev-parse'], stderr=subprocess.PIPE).communicate()[1]: # If this or any parent directory isn't a git repo, this command returns non-zero and prints an error message
 				print "This isn't a git repo, no files will be excluded"
 				self.disable_git = True
+
 		if flags.skip_init and flags.exit_after:
 			print 'Error: cannot use flags -s and -e together.'
 			sys.exit(1)
 
 		self.user = flags.user
-		self.port = str(flags.port) # Store as string to allow passing it as a flag
 		self.path = flags.dest
 		self.quiet = flags.quiet
 		self.verbose = flags.verbose
 		self.show_ignored = flags.show_ignored
 		self.exit_after = flags.exit_after
-		self.cwd = os.getcwd()
+		self.port = str(flags.port) # Store as string to allow passing it as a flag to ssh/rsync
+		self.cwd = os.getcwd() + '/'
 		if self.path[-1] != '/': # Ensure path ends in a slash, i.e. it is a directory
 			self.path += '/'
 
@@ -47,8 +48,8 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			print 'Error with ssh, aborting'
 			sys.exit(1)
 
-		atexit.register(subprocess.call,
-			['ssh', '-O', 'exit', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user], stderr=subprocess.PIPE) # Close the master connection before exiting
+		atexit.register(subprocess.call, ['ssh', '-O', 'exit', '-S',
+			'~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user], stderr=subprocess.PIPE) # Close the master connection before exiting
 
 		if flags.skip_init:
 			print 'Waiting for file changes\n'
@@ -86,12 +87,15 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		if not self.disable_git:
 			args += ['--include-from=' + tf.name, '--exclude=*', '--delete-excluded']
-
+		else:
+			args.append('--delete')
 		if self.verbose:
 			args.append('-v')
+
 		if subprocess.call(args):
 			print 'Error with rsync, aborting'
 			sys.exit(1)
+
 		if not self.disable_git:
 			os.remove(tf.name)
 		if self.exit_after:
@@ -100,25 +104,24 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		else:
 			print 'Startup complete, waiting for file changes\n'
 
-	def print_quiet(self, message):
+	def print_quiet(self, message, newline=True):
 		"""Only print the given message if not in quiet mode.
 
-		If message ends in a '\r', then it is printed without a newline. On most
-		shells, this means that a subsequent call to print will overwrite that
-		line.
+		Optionally print without a newline.
 		"""
 		if not self.quiet:
-			if message[-1] == '\r':
-				print message,
-				sys.stdout.flush()
-			else:
+			if newline:
 				print message
+			else:
+				sys.stdout.write(message)
+				sys.stdout.flush()
 
 	def should_ignore(self, filename):
 		"""Return whether changes to filename should be ignored."""
-
 		if self.disable_git:
 			return False
+		elif filename.startswith(self.cwd + '.git/'): # Make sure we exclude files inside the git directory
+			return True
 		args = ['git', 'ls-files', filename, '-c', '-o', '--exclude-standard']
 		if subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]: # If git outputs something, then that file isn't ignored
 			return False
@@ -126,7 +129,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 	def relative_path(self, filename):
 		"""Convert filename to a path relative to the current directory."""
-		return filename.replace(self.cwd, '', 1)[1:]
+		return filename.replace(self.cwd, '', 1)
 
 	def dispatch(self, event):
 		"""Dispatch events to the appropriate methods."""
@@ -148,34 +151,34 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 	def on_modified(self, path, output=''):
 		"""Call rsync on the given relative path."""
 		if output:
-			self.print_quiet(output + '\r')
+			self.print_quiet(output, False)
 		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + self.port, path, self.user + ':' + self.escape(self.path + path)]
 		if self.verbose:
 			args.append('-v')
 		subprocess.call(args)
 		if output:
-			self.print_quiet(output + '...pushed')
+			self.print_quiet('...pushed')
 
 	def on_moved(self, src, dest, output):
 		if self.should_ignore(dest):
 			self.on_deleted(src, src + ' deleted')
 		else:
-			self.print_quiet(output + '\r')
+			self.print_quiet(output, False)
 			# Try to move src to dest on the remote with ssh and mv. Then call
 			# rsync on it, in case either src was changed on the remote, or it
 			# didn't exist.
 			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mv ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
 			subprocess.call(args, stderr=subprocess.PIPE)
 			self.on_modified(dest)
-		self.print_quiet(output + '...pushed')
+		self.print_quiet('...pushed')
 
 	def on_deleted(self, path, output=''):
 		if output:
-			self.print_quiet(output + '\r')
+			self.print_quiet(output, False)
 		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'rm -f ' + self.escape(self.path + path)]
 		subprocess.call(args)
 		if output:
-			self.print_quiet(output + '...pushed')
+			self.print_quiet('...pushed')
 
 def main():
 	parser = argparse.ArgumentParser(description="""Continuously push changes in the current directory to a remote server.
@@ -183,19 +186,19 @@ def main():
 		epilog="""WARNING: pypush only performs a one-way sync. If you make
 			changes directly on the remote machine, they may be overwritten at
 			any time by changes made locally.""")
-	parser.add_argument('-q', '--quiet', action='store_const', default=False, const=True,
+	parser.add_argument('-q', '--quiet', action='store_true',
 		help='quiet mode - do not show output whenever a file changes')
-	parser.add_argument('-v', '--verbose', action='store_const', default=False, const=True,
+	parser.add_argument('-v', '--verbose', action='store_true',
 		help='verbose mode - run rsync in verbose mode')
-	parser.add_argument('-s', '--skip-init', action='store_const', default=False, const=True,
+	parser.add_argument('-s', '--skip-init', action='store_true',
 		help='skip the initial one-way sync performed on startup')
-	parser.add_argument('-i', '--show-ignored', action='store_const', default=False, const=True,
+	parser.add_argument('-i', '--show-ignored', action='store_true',
 		help='print output even when ignored files are created or modified (this flag is overridden by quiet mode)')
-	parser.add_argument('-e', '--exit-after', action='store_const', default=False, const=True,
+	parser.add_argument('-e', '--exit-after', action='store_true',
 		help='exit after the initial sync, i.e. do not monitor the directory for changes')
-	parser.add_argument('-d', '--disable-git', action='store_const', default=False, const=True,
+	parser.add_argument('-d', '--disable-git', action='store_true',
 		help='do not exclude any files ignored by git')
-	parser.add_argument('-p', '--port', type=int, default=22, help='the port used for the ssh-connection')
+	parser.add_argument('-p', '--port', type=int, default=22, help='the SSH port to use')
 
 	parser.add_argument('--version', action='version', version='%(prog)s 1.2')
 	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')
@@ -205,9 +208,8 @@ def main():
 	parser.add_argument('dest', help='the path to the remote directory to push changes to')
 	args = parser.parse_args()
 
-	event_handler = PypushHandler(args)
 	observer = watchdog.observers.Observer()
-	observer.schedule(event_handler, path='.', recursive=True)
+	observer.schedule(PypushHandler(args), path='.', recursive=True)
 	observer.start()
 	try:
 		while True:
