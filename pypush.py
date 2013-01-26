@@ -35,6 +35,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		self.show_ignored = flags.show_ignored
 		self.exit_after = flags.exit_after
 		self.port = str(flags.port) # Store as string to allow passing it as a flag to ssh/rsync
+		self.keep_extra = flags.keep_extra;
 		self.cwd = os.getcwd() + '/'
 		if self.path[-1] != '/': # Ensure path ends in a slash, i.e. it is a directory
 			self.path += '/'
@@ -84,8 +85,10 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			self.user + ':' + self.escape(self.path)]
 
 		if not self.disable_git:
-			args += ['--exclude-from=' + tf.name, '--delete-excluded']
-		else:
+			args.append('--exclude-from=' + tf.name);
+			if not self.keep_extra:
+				args.append('--delete-excluded');
+		elif not self.keep_extra:
 			args.append('--delete')
 		if self.verbose:
 			args.append('-v')
@@ -197,6 +200,8 @@ def main():
 	parser.add_argument('-d', '--disable-git', action='store_true',
 		help='do not exclude any files ignored by git')
 	parser.add_argument('-p', '--port', type=int, default=22, help='the SSH port to use')
+	parser.add_argument('-k', '--keep-extra', action='store_true',
+		help='keep files on the remote that do not exist locally')
 
 	parser.add_argument('--version', action='version', version='%(prog)s 1.2')
 	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')
