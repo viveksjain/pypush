@@ -17,12 +17,21 @@ import atexit
 class PypushHandler(watchdog.events.FileSystemEventHandler):
 	"""Push all changes in the current directory to a remote server."""
 	def __init__(self, flags):
-		self.disable_git = flags.disable_git
-		# Check if current directory is a git repo
-		if not flags.disable_git:
-			if subprocess.Popen(['git', 'rev-parse'], stderr=subprocess.PIPE).communicate()[1]: # If this or any parent directory isn't a git repo, this command returns non-zero and prints an error message
-				print "This isn't a git repo, no files will be excluded"
-				self.disable_git = True
+		if flags.include_all:
+			self.vcs = None
+			# vcs stores the version control system used to check whether a file
+			# should be ignored or not - 'git', 'hg' or None
+		else:
+			# If this or any parent directory isn't a git/hg repo, the commands
+			# below return non-zero status
+			if subprocess.Popen(['git', 'rev-parse'], stderr=subprocess.PIPE).communicate()[1]:
+				if subprocess.Popen(['hg', 'root'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[1]:
+					print "This isn't a git/hg repo, no files will be ignored"
+					self.vcs = None
+				else:
+					self.vcs = 'hg'
+			else:
+				self.vcs = 'git'
 
 		if flags.skip_init and flags.exit_after:
 			print 'Error: cannot use flags -s and -e together.'
@@ -67,24 +76,29 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		Exclude any files ignored by git.
 		"""
-		if not self.disable_git:
+		if self.vcs == 'git':
 			args = ['git', 'ls-files', '-i', '-o', '--exclude-standard'] # Show all untracked, ignored files in the current directory
-			output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
+		elif self.vcs == 'hg':
+			args = ['hg', 'status', '-i', '-n']
 
+		print 'Performing initial one-way sync'
+		if self.vcs:
+			output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
 			tf = tempfile.NamedTemporaryFile(delete=False)
-			tf.write('/.git\n') # Exclude the git directory
+			# Exclude the git directory
+			tf.write('/.git/\n')
+			tf.write('/.hg/\n')
 			for line in string.split(output, '\n'):
 				if line != '':
 					tf.write('/' + line + '\n')
 			tf.close()
 
-		print 'Performing initial one-way sync'
 		args = ['rsync', '-az', # Usual flags - archive, compress
 			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + self.port, # Connect to the master connection from earlier
 			'./', # Sync current directory
 			self.user + ':' + self.escape(self.path)]
 
-		if not self.disable_git:
+		if self.vcs:
 			args.append('--exclude-from=' + tf.name);
 			if not self.keep_extra:
 				args.append('--delete-excluded');
@@ -97,7 +111,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			print 'Error with rsync, aborting'
 			sys.exit(1)
 
-		if not self.disable_git:
+		if self.vcs:
 			os.remove(tf.name)
 		if self.exit_after:
 			print 'Done'
@@ -119,11 +133,16 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 	def should_ignore(self, filename):
 		"""Return whether changes to filename should be ignored."""
-		if self.disable_git:
+		if not self.vcs:
 			return False
-		elif filename.startswith(self.cwd + '.git/'): # Make sure we exclude files inside the git directory
+		elif filename.startswith(self.cwd + '.git/') or \
+			filename.startswith(self.cwd + '.hg/'): # Make sure we exclude files inside the git/hg directory
 			return True
-		args = ['git', 'ls-files', filename, '-i', '-o', '--exclude-standard']
+		if self.vcs == 'git':
+			args = ['git', 'ls-files', '-i', '-o', '--exclude-standard', filename]
+		else:
+			assert self.vcs == 'hg'
+			args = ['hg', 'status', '-i', '-n', filename]
 		if subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]: # If git outputs something, then that file is ignored
 			return True
 		return False
@@ -183,7 +202,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 def main():
 	parser = argparse.ArgumentParser(description="""Continuously push changes in the current directory to a remote server.
-			Files that are ignored by git will not be pushed (therefore the current directory must be inside a git repo).""",
+			If this is a Git/Mercurial directory, files that are ignored by Git/Mercurial will not be pushed.""",
 		epilog="""WARNING: pypush only performs a one-way sync. If you make
 			changes directly on the remote machine, they may be overwritten at
 			any time by changes made locally.""")
@@ -197,8 +216,8 @@ def main():
 		help='print output even when ignored files are created or modified (this flag is overridden by quiet mode)')
 	parser.add_argument('-e', '--exit-after', action='store_true',
 		help='exit after the initial sync, i.e. do not monitor the directory for changes')
-	parser.add_argument('-d', '--disable-git', action='store_true',
-		help='do not exclude any files ignored by git')
+	parser.add_argument('-a', '--include-all', action='store_true',
+		help='do not ignore any files')
 	parser.add_argument('-p', '--port', type=int, default=22, help='the SSH port to use')
 	parser.add_argument('-k', '--keep-extra', action='store_true',
 		help='keep files on the remote that do not exist locally')
