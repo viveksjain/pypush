@@ -222,7 +222,7 @@ def main():
 	parser.add_argument('-k', '--keep-extra', action='store_true',
 		help='keep files on the remote that do not exist locally')
 
-	parser.add_argument('--version', action='version', version='%(prog)s 1.2')
+	parser.add_argument('--version', action='version', version='%(prog)s 1.3')
 	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')
 	# The user argument is passed on to rsync and ssh, so actually the 'user@'
 	# part is optional, but using metavar='[user@]hostname' causes an error
