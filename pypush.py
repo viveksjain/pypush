@@ -67,13 +67,11 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		Exclude any files ignored by git.
 		"""
 		if not self.disable_git:
-			print 'Generating list of files'
-			args = ['git', 'ls-files', '-c', '-o', '--exclude-standard'] # Show all non-excluded files in the current directory
+			args = ['git', 'ls-files', '-i', '-o', '--exclude-standard'] # Show all untracked, ignored files in the current directory
 			output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
 
 			tf = tempfile.NamedTemporaryFile(delete=False)
-			tf.write('*/\n') # Include all directories - see http://masstransmit.com/garage_blog/rsync-quirks/
-		
+			tf.write('/.git\n') # Exclude the git directory
 			for line in string.split(output, '\n'):
 				if line != '':
 					tf.write('/' + line + '\n')
@@ -86,7 +84,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			self.user + ':' + self.escape(self.path)]
 
 		if not self.disable_git:
-			args += ['--include-from=' + tf.name, '--exclude=*', '--delete-excluded']
+			args += ['--exclude-from=' + tf.name, '--delete-excluded']
 		else:
 			args.append('--delete')
 		if self.verbose:
@@ -122,10 +120,10 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			return False
 		elif filename.startswith(self.cwd + '.git/'): # Make sure we exclude files inside the git directory
 			return True
-		args = ['git', 'ls-files', filename, '-c', '-o', '--exclude-standard']
-		if subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]: # If git outputs something, then that file isn't ignored
-			return False
-		return True
+		args = ['git', 'ls-files', filename, '-i', '-o', '--exclude-standard']
+		if subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]: # If git outputs something, then that file is ignored
+			return True
+		return False
 
 	def relative_path(self, filename):
 		"""Convert filename to a path relative to the current directory."""
