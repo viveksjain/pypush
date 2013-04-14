@@ -77,21 +77,18 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		Exclude any files ignored by git.
 		"""
 		if self.vcs == 'git':
-			commands = [['git', 'ls-files', '-i', '-o', '--exclude-standard']] # Show all untracked, ignored files in the current directory
-			commands.append(['git', 'ls-files', '-i', '-o', '--directory', '--exclude-standard']) # We need to check both commands - see https://github.com/Thr4wn/myths_about_git_show_all_ignored_files
+			args = ['git', 'ls-files', '-i', '-o', '--directory', '--exclude-standard'] # Show all untracked, ignored files in the current directory
 		elif self.vcs == 'hg':
-			commands = [['hg', 'status', '-i', '-n']]
+			args = ['hg', 'status', '-i', '-n']
 
 		print 'Performing initial one-way sync'
 		if self.vcs:
-			output = ''
-			for command in commands:
-				output += subprocess.Popen(command, stdout=subprocess.PIPE).communicate()[0]
+			output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
 			tf = tempfile.NamedTemporaryFile(delete=False)
 			# Exclude the git directory
 			tf.write('/.git/\n')
 			tf.write('/.hg/\n')
-			for line in set(string.split(output, '\n')):
+			for line in string.split(output, '\n'):
 				if line != '':
 					tf.write('/' + line + '\n')
 			tf.close()
