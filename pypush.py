@@ -49,6 +49,15 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		if self.path[-1] != '/': # Ensure path ends in a slash, i.e. it is a directory
 			self.path += '/'
 
+		self.check_ignore = False
+		if self.vcs == 'git':
+			# check_ignore stores whether we can use the 'git check-ignore' command -
+			# it was only introduced in a fairly recent version of git
+			args = ['git', 'check-ignore', '.']
+			if not subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[1]:
+				# No error, so we can use 'git check-ignore'
+				self.check_ignore = True
+
 		args = ['ssh', '-t', '-t', # Force tty allocation - this prevents certain error messages
 			'-M', '-S', '~/.ssh/socket-%r@%h:%p', # Create a master TCP connection that we can use later every time a file changes
 			'-fN', # Go to the background when the connection is established - so after this command returns, we can be sure that the master connection has been created
@@ -139,7 +148,10 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			filename.startswith(self.cwd + '.hg/'): # Make sure we exclude files inside the git/hg directory
 			return True
 		if self.vcs == 'git':
-			args = ['git', 'ls-files', '-i', '-o', '--exclude-standard', filename]
+			if self.check_ignore:
+				args = ['git', 'check-ignore', filename]
+			else:
+				args = ['git', 'ls-files', '-i', '-o', '--exclude-standard', filename]
 		else:
 			assert self.vcs == 'hg'
 			args = ['hg', 'status', '-i', '-n', filename]
@@ -155,15 +167,13 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		"""Dispatch events to the appropriate methods."""
 		if not event.is_directory: # Git doesn't care about directories, so neither do we
 			path = self.relative_path(event.src_path)
-			if watchdog.utils.has_attribute(event, 'dest_path'): # File move
+			if event.event_type == 'moved':
 				dest = self.relative_path(event.dest_path)
-				self.on_moved(path, dest, path + ' moved to ' + dest)
+				self.on_moved(path, dest)
 			elif event.event_type == 'deleted':
-				# We can't do 'git ls-files' on a deleted file, so just try to
-				# delete it - if it doesn't exist on the remote, nothing will happen
-				self.on_deleted(path, path + ' deleted')
+				self.on_deleted(path)
 			else: # Created or modified
-				if not self.should_ignore(event.src_path):
+				if not self.should_ignore(path):
 					self.on_modified(path, path + ' ' + event.event_type)
 				elif self.show_ignored:
 					self.print_quiet(path + ' ' + event.event_type + ' (ignored)')
@@ -179,26 +189,38 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		if output:
 			self.print_quiet('...pushed')
 
-	def on_moved(self, src, dest, output):
+	def on_moved(self, src, dest):
 		if self.should_ignore(dest):
-			self.on_deleted(src, src + ' deleted')
+			self.on_deleted(src)
 		else:
-			self.print_quiet(output, False)
+			self.print_quiet(src + ' moved to ' + dest, False)
 			# Try to move src to dest on the remote with ssh and mv. Then call
 			# rsync on it, in case either src was changed on the remote, or it
 			# didn't exist.
 			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mv ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
 			subprocess.call(args, stderr=subprocess.PIPE)
 			self.on_modified(dest)
-		self.print_quiet('...pushed')
+			self.print_quiet('...pushed')
 
-	def on_deleted(self, path, output=''):
-		if output:
-			self.print_quiet(output, False)
+	def on_deleted(self, path):
+		"""Handles deleting a file.
+
+		If self.check_ignore is True, only deletes the file on the remote if the
+		deleted file would not have been ignored. Also prints output
+		appropriately if self.show_ignored is True."""
+		if self.check_ignore:
+			if self.should_ignore(path):
+				# Ignore deletion
+				if self.show_ignored:
+					self.print_quiet(path + ' deleted (ignored)')
+					return
+		# If we can't use 'git check-ignore', we can't do 'git ls-files' on a
+		# deleted file, so just try to delete it - if it doesn't exist on the
+		# remote, nothing will happen
+		self.print_quiet(path + ' deleted', False)
 		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'rm -f ' + self.escape(self.path + path)]
 		subprocess.call(args)
-		if output:
-			self.print_quiet('...pushed')
+		self.print_quiet('...pushed')
 
 def main():
 	parser = argparse.ArgumentParser(description="""Continuously push changes in the current directory to a remote server.
