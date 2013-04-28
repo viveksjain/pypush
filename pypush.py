@@ -13,6 +13,7 @@ import tempfile
 import argparse
 import re
 import atexit
+import posixpath
 
 class PypushHandler(watchdog.events.FileSystemEventHandler):
 	"""Push all changes in the current directory to a remote server."""
@@ -178,10 +179,20 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 				elif self.show_ignored:
 					self.print_quiet(path + ' ' + event.event_type + ' (ignored)')
 
+	def create_parent_dir(self, path):
+		"""Check if the parent directory of the given path exists on the remote.
+
+		If not, create it and all intermediate directories.
+		"""
+		parent_dir = posixpath.dirname(path)
+		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mkdir -p ' + self.escape(parent_dir)]
+		subprocess.call(args)
+
 	def on_modified(self, path, output=''):
 		"""Call rsync on the given relative path."""
 		if output:
 			self.print_quiet(output, False)
+		self.create_parent_dir(self.path + path)
 		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + self.port, path, self.user + ':' + self.escape(self.path + path)]
 		if self.verbose:
 			args.append('-v')
@@ -197,6 +208,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			# Try to move src to dest on the remote with ssh and mv. Then call
 			# rsync on it, in case either src was changed on the remote, or it
 			# didn't exist.
+			self.create_parent_dir(self.path + dest)
 			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mv ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
 			subprocess.call(args, stderr=subprocess.PIPE)
 			self.on_modified(dest)
@@ -207,7 +219,8 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 
 		If self.check_ignore is True, only deletes the file on the remote if the
 		deleted file would not have been ignored. Also prints output
-		appropriately if self.show_ignored is True."""
+		appropriately if self.show_ignored is True.
+		"""
 		if self.check_ignore:
 			if self.should_ignore(path):
 				# Ignore deletion
