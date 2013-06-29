@@ -209,7 +209,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			# rsync on it, in case either src was changed on the remote, or it
 			# didn't exist.
 			self.create_parent_dir(self.path + dest)
-			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mv ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
+			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mv -f ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
 			subprocess.call(args, stderr=subprocess.PIPE)
 			self.on_modified(dest)
 			self.print_quiet('...pushed')
