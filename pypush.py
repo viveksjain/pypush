@@ -145,8 +145,8 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		"""Return whether changes to filename should be ignored."""
 		if not self.vcs:
 			return False
-		elif filename.startswith(self.cwd + '.git/') or \
-			filename.startswith(self.cwd + '.hg/'): # Make sure we exclude files inside the git/hg directory
+		elif filename.startswith('.git/') or \
+			filename.startswith('.hg/'): # Make sure we exclude files inside the git/hg directory
 			return True
 		if self.vcs == 'git':
 			if self.check_ignore:
@@ -226,7 +226,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 				# Ignore deletion
 				if self.show_ignored:
 					self.print_quiet(path + ' deleted (ignored)')
-					return
+				return
 		# If we can't use 'git check-ignore', we can't do 'git ls-files' on a
 		# deleted file, so just try to delete it - if it doesn't exist on the
 		# remote, nothing will happen
