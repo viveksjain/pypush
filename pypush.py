@@ -14,28 +14,38 @@ import argparse
 import re
 import atexit
 import posixpath
+import errno
 
 class PypushHandler(watchdog.events.FileSystemEventHandler):
 	"""Push all changes in the current directory to a remote server."""
 	def __init__(self, flags):
-		if flags.include_all:
-			self.vcs = None
-			# vcs stores the version control system used to check whether a file
-			# should be ignored or not - 'git', 'hg' or None
-		else:
+		self.vcs = None
+		# vcs stores the version control system used to check whether a file
+		# should be ignored or not - 'git', 'hg' or None
+		try:
 			# If this or any parent directory isn't a git/hg repo, the commands
 			# below return non-zero status
-			if subprocess.Popen(['git', 'rev-parse'], stderr=subprocess.PIPE).communicate()[1]:
-				if subprocess.Popen(['hg', 'root'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[1]:
-					print "This isn't a git/hg repo, no files will be ignored"
-					self.vcs = None
-				else:
-					self.vcs = 'hg'
-			else:
+			if not subprocess.Popen(['git', 'rev-parse'], stderr=subprocess.PIPE).communicate()[1]:
 				self.vcs = 'git'
+		except OSError as e:
+			if e.errno == errno.ENOENT: # git doesn't exist on this system
+				pass
+			else:
+				raise
+		try:
+			if not subprocess.Popen(['hg', 'root'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[1]:
+				self.vcs = 'hg'
+		except OSError as e:
+			if e.errno == errno.ENOENT: # hg doesn't exist on this system
+				pass
+			else:
+				raise
+
+		if self.vcs == None:
+			print "Couldn't detect a git/hg repo, no files will be ignored"
 
 		if flags.skip_init and flags.exit_after:
-			print 'Error: cannot use flags -s and -e together.'
+			print 'Error: cannot use flags -s and -e together'
 			sys.exit(1)
 
 		self.user = flags.user
