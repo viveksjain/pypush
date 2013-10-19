@@ -5,7 +5,6 @@ import time
 import watchdog.events
 import watchdog.observers
 import watchdog.utils
-import signal
 import sys
 import subprocess
 import string
@@ -70,10 +69,10 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 				self.check_ignore = True
 
 		args = ['ssh', '-t', '-t', # Force tty allocation - this prevents certain error messages
-			'-M', '-S', '~/.ssh/socket-%r@%h:%p', # Create a master TCP connection that we can use later every time a file changes
-			'-fN', # Go to the background when the connection is established - so after this command returns, we can be sure that the master connection has been created
-			'-p', self.port,
-            self.user]
+				'-M', '-S', '~/.ssh/socket-%r@%h:%p', # Create a master TCP connection that we can use later every time a file changes
+				'-fN', # Go to the background when the connection is established - so after this command returns, we can be sure that the master connection has been created
+				'-p', self.port,
+				self.user]
 		if subprocess.call(args):
 			print 'Error with ssh, aborting'
 			sys.exit(1)
