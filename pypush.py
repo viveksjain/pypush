@@ -40,7 +40,9 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			else:
 				raise
 
-		if self.vcs == None:
+		if flags.include_all:
+			self.vcs = None
+		elif self.vcs == None:
 			print "Couldn't detect a git/hg repo, no files will be ignored"
 
 		if flags.skip_init and flags.exit_after:
