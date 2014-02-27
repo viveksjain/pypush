@@ -32,7 +32,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			else:
 				raise
 		try:
-			if not subprocess.Popen(['hg', 'root'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[1]:
+			if not self.vcs and not subprocess.Popen(['hg', 'root'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[1]:
 				self.vcs = 'hg'
 		except OSError as e:
 			if e.errno == errno.ENOENT: # hg doesn't exist on this system
@@ -106,9 +106,11 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		if self.vcs:
 			output = subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
 			tf = tempfile.NamedTemporaryFile(delete=False)
-			# Exclude the git directory
-			tf.write('/.git/\n')
-			tf.write('/.hg/\n')
+			if self.vcs == 'git':
+				tf.write('/.git/\n')
+			else:
+				assert self.vcs == 'hg'
+				tf.write('/.hg/\n')
 			for line in string.split(output, '\n'):
 				if line != '':
 					tf.write('/' + line + '\n')
