@@ -55,8 +55,9 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		self.verbose = flags.verbose
 		self.show_ignored = flags.show_ignored
 		self.exit_after = flags.exit_after
+		self.ssh_options = flags.ssh_options
 		self.port = str(flags.port) # Store as string to allow passing it as a flag to ssh/rsync
-		self.keep_extra = flags.keep_extra;
+		self.keep_extra = flags.keep_extra
 		self.cwd = os.getcwd() + '/'
 		if self.path[-1] != '/': # Ensure path ends in a slash, i.e. it is a directory
 			self.path += '/'
@@ -74,23 +75,40 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 				'-M', '-S', '~/.ssh/socket-%r@%h:%p', # Create a master TCP connection that we can use later every time a file changes
 				'-fN', # Go to the background when the connection is established - so after this command returns, we can be sure that the master connection has been created
 				'-p', self.port,
-				self.user]
+				self.user] + self.get_ssh_options()
 		if subprocess.call(args):
 			print 'Error with ssh, aborting'
 			sys.exit(1)
 
 		atexit.register(subprocess.call, ['ssh', '-O', 'exit', '-S',
-			'~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user], stderr=subprocess.PIPE) # Close the master connection before exiting
+			'~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user] + self.get_ssh_options(), stderr=subprocess.PIPE) # Close the master connection before exiting
 
 		if flags.skip_init:
 			print 'Waiting for file changes\n'
 		else:
 			self.sync()
 
-	def escape(self, path):
-		"""Escape all special characters in path, except the tilde (~)."""
-		return re.sub(r'([\|&;<>\(\)\$`\\"\' \*\?\[#])', # List of special characters from http://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html
-			r'\\\1', path)
+	def escape(self, string, escape_tilde=False):
+		"""Escape all special characters in string, except the tilde (~) by default."""
+		special_chars = r'[\|&;<>\(\)\$`\\"\' \*\?\[#]' # List of special characters from http://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html
+		if escape_tilde:
+			special_chars += '~'
+		return re.sub('(' + special_chars + ')',
+			r'\\\1', string)
+
+	def get_ssh_options(self):
+		args = []
+		for opt in self.ssh_options:
+			args.append('-o')
+			args.append(opt)
+		return args
+
+	def get_rsh(self):
+		"""Return a command specifying the remote shell to use for rsync (for the -e flag)."""
+		command = 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + self.port # Connect to the master connection from earlier
+		for opt in self.ssh_options:
+			command += ' -o ' + self.escape(opt, True)
+		return command
 
 	def sync(self):
 		"""Perform a one-way sync to the remote directory.
@@ -117,14 +135,14 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			tf.close()
 
 		args = ['rsync', '-az', # Usual flags - archive, compress
-			'-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + self.port, # Connect to the master connection from earlier
+			'-e', self.get_rsh(),
 			'./', # Sync current directory
 			self.user + ':' + self.escape(self.path)]
 
 		if self.vcs:
-			args.append('--exclude-from=' + tf.name);
+			args.append('--exclude-from=' + tf.name)
 			if not self.keep_extra:
-				args.append('--delete-excluded');
+				args.append('--delete-excluded')
 		elif not self.keep_extra:
 			args.append('--delete')
 		if self.verbose:
@@ -158,8 +176,9 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		"""Return whether changes to filename should be ignored."""
 		if not self.vcs:
 			return False
-		elif filename.startswith('.git/') or \
-			filename.startswith('.hg/'): # Make sure we exclude files inside the git/hg directory
+		elif self.vcs == 'git' and filename.startswith('.git/'):
+			return True
+		elif self.vcs == 'hg' and filename.startswith('.hg/'):
 			return True
 		if self.vcs == 'git':
 			if self.check_ignore:
@@ -198,7 +217,8 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		If not, create it and all intermediate directories.
 		"""
 		parent_dir = posixpath.dirname(path)
-		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mkdir -p ' + self.escape(parent_dir)]
+		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p',
+			'-p', self.port, self.user] + self.get_ssh_options() + ['mkdir -p ' + self.escape(parent_dir)]
 		subprocess.call(args)
 
 	def on_modified(self, path, output=''):
@@ -206,7 +226,8 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		if output:
 			self.print_quiet(output, False)
 		self.create_parent_dir(self.path + path)
-		args = ['rsync', '-az', '-e', 'ssh -S ~/.ssh/socket-%r@%h:%p -p ' + self.port, path, self.user + ':' + self.escape(self.path + path)]
+		args = ['rsync', '-az',
+			'-e', self.get_rsh(), path, self.user + ':' + self.escape(self.path + path)]
 		if self.verbose:
 			args.append('-v')
 		subprocess.call(args)
@@ -222,7 +243,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 			# rsync on it, in case either src was changed on the remote, or it
 			# didn't exist.
 			self.create_parent_dir(self.path + dest)
-			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'mv -f ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
+			args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user] + self.get_ssh_options() + ['mv -f ' + self.escape(self.path + src) + ' ' + self.escape(self.path + dest)]
 			subprocess.call(args, stderr=subprocess.PIPE)
 			self.on_modified(dest)
 			self.print_quiet('...pushed')
@@ -244,7 +265,7 @@ class PypushHandler(watchdog.events.FileSystemEventHandler):
 		# deleted file, so just try to delete it - if it doesn't exist on the
 		# remote, nothing will happen
 		self.print_quiet(path + ' deleted', False)
-		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user, 'rm -f ' + self.escape(self.path + path)]
+		args = ['ssh', '-S', '~/.ssh/socket-%r@%h:%p', '-p', self.port, self.user] + self.get_ssh_options() + ['rm -f ' + self.escape(self.path + path)]
 		subprocess.call(args)
 		self.print_quiet('...pushed')
 
@@ -269,6 +290,7 @@ def main():
 	parser.add_argument('-p', '--port', type=int, default=22, help='the SSH port to use')
 	parser.add_argument('-k', '--keep-extra', action='store_true',
 		help='keep files on the remote that do not exist locally')
+	parser.add_argument('-o', '--ssh-options', default=[], action='append', help='options to pass on to SSH with the -o flag. This argument may be specified multiple times.')
 
 	parser.add_argument('--version', action='version', version='%(prog)s 1.3')
 	parser.add_argument('user', metavar='user@hostname', help='the remote machine (and optional user name) to login to')

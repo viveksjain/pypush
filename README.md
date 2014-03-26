@@ -39,7 +39,8 @@ Or you can use `easy_install`:
 Usage
 -----
 ```
-usage: pypush [-h] [-q] [-v] [-s] [-i] [-e] [-a] [-p PORT] [-k] [--version]
+usage: pypush [-h] [-q] [-v] [-s] [-i] [-e] [-a] [-p PORT] [-k]
+              [-o SSH_OPTIONS] [--version]
               user@hostname dest
 
 Continuously push changes in the current directory to a remote server. If this
@@ -64,6 +65,9 @@ optional arguments:
   -a, --include-all     do not ignore any files
   -p PORT, --port PORT  the SSH port to use
   -k, --keep-extra      keep files on the remote that do not exist locally
+  -o SSH_OPTIONS, --ssh-options SSH_OPTIONS
+                        options to pass on to SSH with the -o flag. This
+                        argument may be specified multiple times.
   --version             show program's version number and exit
 
 WARNING: pypush only performs a one-way sync. If you make changes directly on
