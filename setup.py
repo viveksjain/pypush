@@ -21,7 +21,7 @@ setup(
 		'Topic :: Utilities'
 	],
 	py_modules = ['pypush'],
-	install_requires=['watchdog'],
+	install_requires=['watchdog >= 0.8'],
 	entry_points = {
 		'console_scripts': ['pypush = pypush:main']
 	}
