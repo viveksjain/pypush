@@ -84,4 +84,4 @@ Stop pypush by pressing `Ctrl+C`.
 Support/Contact
 ---------------
 [Open a new issue](https://github.com/viveksjain/pypush/issues/new) or email me
-at [pypush@vivekja.in](mailto:pypush@vivekja.in).
+at [hello@vivekja.in](mailto:hello@vivekja.in).
